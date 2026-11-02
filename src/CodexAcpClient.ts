@@ -242,9 +242,9 @@ export class CodexAcpClient {
             case "api-key":
                 return await this.authenticateWithApiKey(authRequest);
             case "chat-gpt":
-                return await this.authenticateWithChatGpt();
+                return await this.authenticateWithChatGpt(authRequest._meta?.replaceLogin === true);
             case "chat-gpt-device-code":
-                return await this.authenticateWithChatGptDeviceCode(urlElicitationRequester);
+                return await this.authenticateWithChatGptDeviceCode(authRequest._meta?.replaceLogin === true, urlElicitationRequester);
             case "gateway":
                 return this.authenticateWithGateway(authRequest);
         }
@@ -262,8 +262,8 @@ export class CodexAcpClient {
         return result.success;
     }
 
-    private async authenticateWithChatGpt(): Promise<Boolean> {
-        if (await this.hasWorkingChatGptLogin()) {
+    private async authenticateWithChatGpt(replaceLogin: boolean): Promise<Boolean> {
+        if (!replaceLogin && await this.hasWorkingChatGptLogin()) {
             return true;
         }
         const loginCompletedPromise = this.awaitNextLoginCompleted();
@@ -301,8 +301,8 @@ export class CodexAcpClient {
         }
     }
 
-    private async authenticateWithChatGptDeviceCode(urlElicitationRequester?: UrlElicitationRequester): Promise<Boolean> {
-        if (await this.hasWorkingChatGptLogin()) {
+    private async authenticateWithChatGptDeviceCode(replaceLogin: boolean, urlElicitationRequester?: UrlElicitationRequester): Promise<Boolean> {
+        if (!replaceLogin && await this.hasWorkingChatGptLogin()) {
             return true;
         }
         if (!urlElicitationRequester) {
