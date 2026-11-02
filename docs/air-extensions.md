@@ -800,6 +800,12 @@ Without the capability, the adapter sends no async task update.
 
 The app-server process id stays an internal control handle.
 
+### Output request
+
+A client can request `clientCapabilities._meta.asyncTaskDetails = {"output": true}` during `initialize`. The adapter then responds with `_meta.asyncTaskDetails = {"output": true}`. Without that request, the initialize response is unchanged and output requests are rejected.
+
+The client sends `_session/async_task/output` with `{ "sessionId": "thread-id", "asyncTaskId": "command-item-id" }` and receives `{ "output": "..." }`. The adapter keeps the most recent 8 KiB of Codex command output per task while it runs and after it finishes, until the session closes. Unknown task ids, ids owned by another session, and requests without the negotiated capability return `invalidParams`.
+
 ### Stop request
 
 The client sends `_session/async_task/stop`:

@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it} from 'vitest';
 import type {ThreadItem} from '../../app-server/v2';
 import type {ServerNotification} from '../../app-server';
-import {ASYNC_TASK_STOP_METHOD} from '../../async-tasks/AsyncTaskExtension';
+import {ASYNC_TASK_OUTPUT_METHOD, ASYNC_TASK_STOP_METHOD} from '../../async-tasks/AsyncTaskExtension';
 import {AIR_ASYNC_TASKS_KEY} from '../../AirExtension';
 import {
     sessionId,
@@ -57,6 +57,33 @@ describe('_session/async_task/stop on ACP v2', () => {
         closeClient?.();
         closeClient = null;
         expectConformingV2SessionUpdates();
+    });
+
+    it('serves negotiated output across task completion and rejects unknown, foreign, and closed ids', async () => {
+        const client = await connectSession(2, {clientCapabilities: {
+            _meta: {asyncTaskDetails: {output: true}, jetbrains: {air: {version: 1, capabilities: [AIR_ASYNC_TASKS_KEY]}}},
+        }});
+        closeClient = () => client.connection.close();
+        client.setCodexResponse("thread/backgroundTerminals/list", async () => ({data: [{itemId: "command-1", processId: "42", command: "echo tick"}], nextCursor: null}));
+        await spawnAsyncTask(client);
+        const request = (session: string, task: string) => client.request(ASYNC_TASK_OUTPUT_METHOD, {sessionId: session, asyncTaskId: task});
+        await expect(request(sessionId, "command-1")).resolves.toEqual({output: ""});
+        client.emit({method: "item/commandExecution/outputDelta", params: {threadId: sessionId, turnId: "turn-1", itemId: "command-1", delta: "tick 1\n"}});
+        await settle();
+        await expect(request(sessionId, "command-1")).resolves.toEqual({output: "tick 1\n"});
+        await expect(request(sessionId, "missing")).rejects.toMatchObject({code: -32602});
+        await expect(request("other-session", "command-1")).rejects.toMatchObject({code: -32602});
+        client.emit({method: "item/completed", params: {threadId: sessionId, turnId: "turn-1", completedAtMs: 0, item: commandItem({status: "completed"})}});
+        await settle();
+        await expect(request(sessionId, "command-1")).resolves.toEqual({output: "tick 1\n"});
+        await client.request("session/close", {sessionId});
+        await expect(request(sessionId, "command-1")).rejects.toMatchObject({code: -32602});
+    });
+
+    it('rejects output without the negotiated capability', async () => {
+        const client = await connectSession(2, {clientCapabilities: asyncTasksClientCapabilities});
+        closeClient = () => client.connection.close();
+        await expect(client.request(ASYNC_TASK_OUTPUT_METHOD, {sessionId, asyncTaskId: "command-1"})).rejects.toMatchObject({code: -32602});
     });
 
     it('stops a spawned async task on v2, returning {stopped: true} and rendering _async_task_state_update', async () => {

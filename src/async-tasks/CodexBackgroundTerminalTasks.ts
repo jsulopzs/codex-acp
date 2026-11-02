@@ -26,6 +26,7 @@ type Task = {
     terminalUpdate: Promise<void> | null;
     terminalPublished: boolean;
     state: "running" | "stopping" | TerminalState;
+    output: Buffer;
 };
 
 type PendingSync = {
@@ -48,6 +49,7 @@ export class CodexBackgroundTerminalTasks {
      * before the end. A task leaves the map when a list of its thread no longer names it.
      */
     private readonly ended = new Map<string, string>();
+    private readonly completedOutput = new Map<string, {sessionId: string; output: Buffer}>();
     private readonly syncs = new Map<string, PendingSync>();
     private appServerGeneration = 0;
     private appServerQueriesEnabled = true;
@@ -75,6 +77,11 @@ export class CodexBackgroundTerminalTasks {
         }
         if (notification.method === "item/completed" && notification.params.item.type === "commandExecution") {
             await this.observeCommandCompleted(notification.params.item, threadId);
+            return;
+        }
+        if (notification.method === "item/commandExecution/outputDelta") {
+            const task = this.tasks.get(wireTaskId(this.rootSessionId, threadId, notification.params.itemId));
+            if (task) task.output = appendOutput(task.output, notification.params.delta);
             return;
         }
         // Codex sends no event when a command moves to the background or its background process exits, so the
@@ -105,7 +112,10 @@ export class CodexBackgroundTerminalTasks {
     ): Promise<void> {
         if (!this.isActive()) return;
         const task = this.tasks.get(wireTaskId(this.rootSessionId, threadId, item.id));
-        if (task) await this.finish(task, item.status === "completed" ? "completed" : "failed");
+        if (task) {
+            if (task.output.length === 0 && item.aggregatedOutput !== null) task.output = tailOutput(Buffer.from(item.aggregatedOutput));
+            await this.finish(task, item.status === "completed" ? "completed" : "failed");
+        }
     }
 
     refresh(threadId: string = this.rootSessionId, sessionId: string = this.rootSessionId): void {
@@ -210,12 +220,20 @@ export class CodexBackgroundTerminalTasks {
         }
     }
 
+    output(taskId: string, sessionId: string): string | null {
+        const task = this.tasks.get(taskId);
+        if (task?.sessionId === sessionId && task.publication === "published") return task.output.toString("utf8");
+        const completed = this.completedOutput.get(taskId);
+        return completed?.sessionId === sessionId ? completed.output.toString("utf8") : null;
+    }
+
     clear(): void {
         this.disposed = true;
         this.appServerGeneration += 1;
         this.appServerQueriesEnabled = false;
         this.tasks.clear();
         this.ended.clear();
+        this.completedOutput.clear();
         this.syncs.clear();
     }
 
@@ -231,6 +249,7 @@ export class CodexBackgroundTerminalTasks {
         if (this.tasks.get(task.asyncTaskId) !== task) return;
         this.tasks.delete(task.asyncTaskId);
         this.ended.set(task.asyncTaskId, task.threadId);
+        if (task.publication === "published") this.completedOutput.set(task.asyncTaskId, {sessionId: task.sessionId, output: task.output});
     }
 
     private async syncThread(threadId: string, sessionId: string): Promise<void> {
@@ -355,6 +374,7 @@ export class CodexBackgroundTerminalTasks {
             terminalUpdate: null,
             terminalPublished: false,
             state: "running",
+            output: Buffer.alloc(0),
         };
         this.tasks.set(asyncTaskId, task);
         return task;
@@ -428,6 +448,19 @@ export class CodexBackgroundTerminalTasks {
     private queryIsCurrent(generation: number): boolean {
         return this.canQueryAppServer() && generation === this.appServerGeneration;
     }
+}
+
+const MAX_OUTPUT_BYTES = 8 * 1024;
+
+function tailOutput(output: Buffer): Buffer {
+    if (output.length <= MAX_OUTPUT_BYTES) return output;
+    let start = output.length - MAX_OUTPUT_BYTES;
+    while (start < output.length && (output[start]! & 0xc0) === 0x80) start++;
+    return output.subarray(start);
+}
+
+function appendOutput(current: Buffer, delta: string): Buffer {
+    return tailOutput(Buffer.concat([current, Buffer.from(delta)]));
 }
 
 function isTerminalState(state: Task["state"]): state is TerminalState {

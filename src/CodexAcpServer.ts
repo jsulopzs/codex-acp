@@ -220,7 +220,7 @@ import {
 } from "./AirExtension";
 import {SessionIndexService} from "./SessionIndexService";
 import type {SessionIndexTitleState} from "./SessionIndexTitles";
-import {ASYNC_TASK_STOP_METHOD} from "./async-tasks/AsyncTaskExtension";
+import {ASYNC_TASK_OUTPUT_METHOD, ASYNC_TASK_STOP_METHOD} from "./async-tasks/AsyncTaskExtension";
 import {CodexBackgroundTerminalTasks} from "./async-tasks/CodexBackgroundTerminalTasks";
 import {clientSupportsCompaction, CodexSessionCompactions, createCompactionUpdate} from "./CodexSessionCompactions";
 import {CodexSessionToolCalls} from "./CodexSessionToolCalls";
@@ -405,6 +405,11 @@ function clientSupportsTypedSessionFailures(capabilities: acp.ClientCapabilities
 
 function clientSupportsAgentFileChangeReports(capabilities: acp.ClientCapabilities | null): boolean {
     return clientSupportsAirCapability(capabilities, AIR_AGENT_FILE_CHANGE_REPORT_KEY);
+}
+
+function clientSupportsAsyncTaskOutput(capabilities: acp.ClientCapabilities | null): boolean {
+    const details = capabilities?._meta?.["asyncTaskDetails"];
+    return isRecord(details) && details["output"] === true;
 }
 
 interface ActiveAuthState {
@@ -914,6 +919,7 @@ export class CodexAcpServer {
             steering: {
                 supported: true,
             },
+            ...(clientSupportsAsyncTaskOutput(this.clientCapabilities) ? {asyncTaskDetails: {output: true}} : {}),
             ...(this.capabilities.airClient ? {
                 [JETBRAINS_META_KEY]: {
                     [AIR_META_KEY]: {
@@ -973,6 +979,17 @@ export class CodexAcpServer {
                         () => sessionState.asyncTasks.stop(methodRequest.params.asyncTaskId),
                     ),
                 };
+            }
+            case ASYNC_TASK_OUTPUT_METHOD: {
+                if (!clientSupportsAsyncTaskOutput(this.clientCapabilities)) {
+                    throw RequestError.invalidParams(undefined, "Async task output was not negotiated");
+                }
+                const sessionState = this.sessions.get(methodRequest.params.sessionId);
+                const output = sessionState?.asyncTasks.output(methodRequest.params.asyncTaskId, methodRequest.params.sessionId);
+                if (output === null || output === undefined) {
+                    throw RequestError.invalidParams(undefined, "Unknown async task for session");
+                }
+                return {output};
             }
             case GOAL_CONTROL_METHOD:
             case LEGACY_GOAL_CONTROL_METHOD: {

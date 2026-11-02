@@ -98,6 +98,13 @@ describe('CodexACPAgent - initialize', () => {
         });
     });
 
+    it('negotiates async task output only when requested', async () => {
+        const without = await agent.initialize({protocolVersion: acp.PROTOCOL_VERSION});
+        expect(without._meta).not.toHaveProperty('asyncTaskDetails');
+        const withOutput = await agent.initialize({protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {_meta: {asyncTaskDetails: {output: true}}}});
+        expect(withOutput._meta).toMatchObject({asyncTaskDetails: {output: true}});
+    });
+
     it('should advertise gateway auth when the client opts into gateway auth metadata', async () => {
         const params: acp.InitializeRequest = {
             protocolVersion: acp.PROTOCOL_VERSION,

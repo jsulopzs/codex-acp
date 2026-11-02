@@ -21,6 +21,24 @@ import {
 type CommandExecutionItem = Extract<ThreadItem, {type: "commandExecution"}>;
 
 describe("Codex background terminal tasks", () => {
+    it("retains the last 8 KiB of output while running and after completion, then releases it on clear", async () => {
+        const fixture = createFixture();
+        fixture.list.mockResolvedValue(page([terminal()]));
+        const item = command();
+        await fixture.tasks.handleNotification(started(item), "thread-1");
+        await fixture.tasks.sync();
+        const delta = (text: string) => ({method: "item/commandExecution/outputDelta" as const, params: {threadId: "thread-1", turnId: "turn-id", itemId: item.id, delta: text}});
+        await fixture.tasks.handleNotification(delta("first\n"), "thread-1");
+        await fixture.tasks.handleNotification(delta("x".repeat(8192) + "é"), "thread-1");
+        expect(fixture.tasks.output(item.id, "thread-1")).toBe("x".repeat(8190) + "é");
+        expect(fixture.tasks.output(item.id, "other-session")).toBeNull();
+        expect(fixture.tasks.output("unknown", "thread-1")).toBeNull();
+        await fixture.tasks.handleNotification(completed({...item, status: "completed"}), "thread-1");
+        expect(fixture.tasks.output(item.id, "thread-1")).toBe("x".repeat(8190) + "é");
+        fixture.tasks.clear();
+        expect(fixture.tasks.output(item.id, "thread-1")).toBeNull();
+    });
+
     it("discovers background work from the root session event stream", async () => {
         const fixture = createCodexMockTestFixture();
         await fixture.getCodexAcpAgent().initialize({

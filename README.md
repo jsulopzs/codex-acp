@@ -101,9 +101,9 @@ See [docs/subagent-sessions.md](docs/subagent-sessions.md) for the negotiation, 
 
 ### Background terminal tasks
 
-Codex can keep a shell command running after a turn continues. AIR clients can show this work in the Async Tasks panel and stop one command.
+Codex can keep a shell command running after a turn continues. AIR clients can show this work in the Async Tasks panel, read its recent output, and stop one command.
 
-See [AIR extensions](docs/air-extensions.md#async-tasks) for the capability, lifecycle events, and stop request.
+See [AIR extensions](docs/air-extensions.md#async-tasks) for the capability, lifecycle events, output request, and stop request.
 
 ## License
 

@@ -12,7 +12,9 @@ import {
     type GoalControlRequest,
 } from "./GoalExtension";
 import {
+    ASYNC_TASK_OUTPUT_METHOD,
     ASYNC_TASK_STOP_METHOD,
+    type AsyncTaskOutputExtRequest,
     type AsyncTaskStopExtRequest,
 } from "./async-tasks/AsyncTaskExtension";
 
@@ -79,6 +81,7 @@ export type ExtMethodRequest =
     | SessionSteeringExtRequest
     | GoalControlExtRequest
     | AsyncTaskStopExtRequest
+    | AsyncTaskOutputExtRequest
 
 export function isExtMethodRequest(request: { method: string, params: Record<string, unknown> }): request is ExtMethodRequest {
     return request.method === "authentication/status"
@@ -87,7 +90,8 @@ export function isExtMethodRequest(request: { method: string, params: Record<str
         || request.method === GOAL_CONTROL_METHOD
         || request.method === LEGACY_GOAL_CONTROL_METHOD
         || request.method === SESSION_STEERING_METHOD
-        || request.method === ASYNC_TASK_STOP_METHOD;
+        || request.method === ASYNC_TASK_STOP_METHOD
+        || request.method === ASYNC_TASK_OUTPUT_METHOD;
 }
 
 /**
